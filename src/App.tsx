@@ -2,14 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   Terminal, 
-  Play, 
   RotateCcw, 
-  Flame, 
-  BookOpen, 
-  CheckCircle2, 
   AlertCircle,
-  HelpCircle,
-  Code2
+  Code2,
+  ChevronDown,
+  Layers,
+  BookOpen
 } from 'lucide-react';
 import { AnalysisResult, MistakePattern, MistakeRecord, SupportedLanguage } from './types';
 import { PRESET_ERRORS, PresetError } from './data/presets';
@@ -22,31 +20,30 @@ import {
   saveMistakeRecord, 
   toggleMasteredMistake 
 } from './services/storageService';
-import { Header } from './components/Header';
+import { Sidebar, NavigationTab } from './components/Sidebar';
 import { CodeEditor } from './components/CodeEditor';
 import { ErrorAnalyzer } from './components/ErrorAnalyzer';
 import { MistakeAnalytics } from './components/MistakeAnalytics';
 import { PracticeDrills } from './components/PracticeDrills';
 import { ErrorLibrary } from './components/ErrorLibrary';
-import { ApiKeyModal } from './components/ApiKeyModal';
-import { ExportModal } from './components/ExportModal';
-import { ThemeCustomizer, AppTheme, applyThemeClass, getStoredTheme } from './components/ThemeCustomizer';
+import { SettingsModal } from './components/SettingsModal';
+import { AppTheme, applyThemeClass, getStoredTheme } from './components/ThemeCustomizer';
 
-const SUPPORTED_LANGUAGES: { value: SupportedLanguage; label: string; icon: string }[] = [
-  { value: 'java', label: 'Java', icon: '☕' },
-  { value: 'python', label: 'Python', icon: '🐍' },
-  { value: 'javascript', label: 'JavaScript', icon: '⚡' },
-  { value: 'typescript', label: 'TypeScript', icon: '🔷' },
-  { value: 'cpp', label: 'C++', icon: '⚙️' },
-  { value: 'go', label: 'Go', icon: '🐹' },
-  { value: 'rust', label: 'Rust', icon: '🦀' },
-  { value: 'csharp', label: 'C#', icon: '🟣' },
+const SUPPORTED_LANGUAGES: { value: SupportedLanguage; label: string }[] = [
+  { value: 'java', label: 'Java' },
+  { value: 'python', label: 'Python' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'typescript', label: 'TypeScript' },
+  { value: 'cpp', label: 'C++' },
+  { value: 'go', label: 'Go' },
+  { value: 'rust', label: 'Rust' },
+  { value: 'csharp', label: 'C#' },
 ];
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'inspector' | 'analytics' | 'drills' | 'library'>('inspector');
+  const [activeTab, setActiveTab] = useState<NavigationTab>('inspector');
   
-  // Default to Java NullPointerException as highlighted in the user prompt!
+  // Default preset
   const defaultPreset = PRESET_ERRORS[0];
   const [language, setLanguage] = useState<SupportedLanguage>(defaultPreset.language);
   const [codeSnippet, setCodeSnippet] = useState<string>(defaultPreset.codeSnippet);
@@ -57,29 +54,23 @@ export function App() {
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
-  // Mistake History & DNA
+  // History & DNA
   const [history, setHistory] = useState<MistakeRecord[]>([]);
   const [patterns, setPatterns] = useState<MistakePattern[]>([]);
 
-  // Modals & Settings
-  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+  // Settings
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [isSpeechActive, setIsSpeechActive] = useState(true);
 
-  // Initialize storage & theme
   useEffect(() => {
     applyThemeClass(getStoredTheme());
-
-    const loadedKey = getStoredApiKey();
-    setHasApiKey(Boolean(loadedKey));
+    setHasApiKey(Boolean(getStoredApiKey()));
 
     const loadedHistory = getMistakeHistory();
     setHistory(loadedHistory);
     setPatterns(calculateMistakeDNA(loadedHistory));
 
-    // If history is empty, seed with the default preset so user immediately sees analytics in action!
     if (loadedHistory.length === 0) {
       const seeded = saveMistakeRecord(defaultPreset.result);
       const updated = [seeded];
@@ -99,8 +90,6 @@ export function App() {
     setAnalysisResult(preset.result);
     setIsLiveAI(false);
     setActiveTab('inspector');
-    // Scroll to results
-    window.scrollTo({ top: 350, behavior: 'smooth' });
   };
 
   const handleRunAnalysis = async () => {
@@ -117,19 +106,10 @@ export function App() {
       setAnalysisResult(result);
       setIsLiveAI(live);
 
-      // Save mistake record to history
       const savedRecord = saveMistakeRecord(result);
       const updatedHistory = [savedRecord, ...history.filter(h => h.id !== savedRecord.id)];
       setHistory(updatedHistory);
       setPatterns(calculateMistakeDNA(updatedHistory));
-
-      // Scroll smoothly down to the analysis result
-      setTimeout(() => {
-        const resultSection = document.getElementById('analysis-results-section');
-        if (resultSection) {
-          resultSection.scrollIntoView({ behavior: 'smooth' });
-        }
-      }, 100);
     } catch (err: any) {
       console.error(err);
       setErrorNotice(err.message || 'Failed to analyze code snippet.');
@@ -160,8 +140,6 @@ export function App() {
     setLanguage(mistake.language);
     setCodeSnippet(mistake.originalCode);
     setErrorMessage('');
-    
-    // Find preset or reconstruct analysis
     const matched = PRESET_ERRORS.find(p => p.id === mistake.id || p.language === mistake.language);
     if (matched) {
       setAnalysisResult(matched.result);
@@ -172,264 +150,227 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white transition-colors duration-300">
-      {/* Navigation Header */}
-      <Header
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row font-sans selection:bg-indigo-500 selection:text-white">
+      {/* Sleek App Sidebar */}
+      <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
-        onOpenExportModal={() => setIsExportModalOpen(true)}
-        onOpenThemeModal={() => setIsThemeModalOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         hasApiKey={hasApiKey}
-        isSpeechActive={isSpeechActive}
-        onToggleSpeech={() => setIsSpeechActive(!isSpeechActive)}
         mistakeCount={history.length}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'inspector' && (
-          <div className="space-y-8">
-            {/* Hero / Quick Pitch */}
-            <div className="text-center max-w-3xl mx-auto space-y-3 pt-2 pb-4">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold">
-                <Flame className="w-3.5 h-3.5 text-rose-400" />
-                <span>Stop blind copying. Understand every bug deeply.</span>
-              </div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight">
-                Turn Your Errors Into <span className="bg-gradient-to-r from-indigo-400 via-purple-300 to-rose-400 bg-clip-text text-transparent">Programming Superpowers</span>
-              </h1>
-              <p className="text-sm sm:text-base text-slate-400 leading-relaxed font-sans">
-                Paste your broken code or terminal error. Bug2Brain explains the root cause in simple language, shows the line-by-line fix, and quizzes you to lock in the concept.
-              </p>
-            </div>
-
-            {/* Quick Presets Bar */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-400 font-semibold px-1">
-                <span className="flex items-center gap-1.5">
-                  <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Try a notorious beginner error:</span>
-                </span>
-                <button
-                  onClick={() => setActiveTab('library')}
-                  className="text-indigo-400 hover:text-indigo-300 font-medium hover:underline hidden sm:inline"
-                >
-                  Browse all in Library →
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-                {PRESET_ERRORS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    onClick={() => handleSelectPreset(preset)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-850 bg-slate-900/60 hover:border-indigo-500/50 hover:bg-slate-800/60 text-xs text-slate-300 transition-all shrink-0 active:scale-95"
-                  >
-                    <span className="font-mono text-indigo-400 font-bold">{preset.language.toUpperCase()}</span>
-                    <span>{preset.name.split(':')[0]}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Workspace: Code Input & Terminal Error Input */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 backdrop-blur-md shadow-2xl space-y-6">
-              {/* Language Selector Bar */}
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
-                <div className="flex items-center gap-2">
-                  <Code2 className="w-4 h-4 text-indigo-400" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                    Select Language:
-                  </span>
+      {/* Main App Content Viewport */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+          
+          {/* ===================== TAB 1: DIAGNOSE ===================== */}
+          {activeTab === 'inspector' && (
+            <div className="space-y-6">
+              {/* Top View Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-5">
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                    Diagnose Error
+                  </h1>
+                  <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+                    Deconstruct root causes, learn line-by-line fixes, and practice the concepts.
+                  </p>
                 </div>
 
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
-                  {SUPPORTED_LANGUAGES.map((lang) => (
+                {/* Compact Preset Chips */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  <span className="text-[11px] font-medium text-slate-500 mr-1 shrink-0">
+                    Quick Presets:
+                  </span>
+                  {PRESET_ERRORS.slice(0, 4).map((p) => (
                     <button
-                      key={lang.value}
-                      onClick={() => setLanguage(lang.value)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                        language === lang.value
-                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                          : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white hover:border-slate-700'
-                      }`}
+                      key={p.id}
+                      onClick={() => handleSelectPreset(p)}
+                      className="px-2.5 py-1 rounded-lg text-xs border border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white hover:border-slate-700 transition-colors shrink-0"
                     >
-                      <span>{lang.icon}</span>
-                      <span>{lang.label}</span>
+                      {p.language.toUpperCase()}: {p.name.split(' ')[1]}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Code Snippet Editor */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                    Your Broken Code Snippet
-                  </label>
-                  <span className="text-xs text-slate-500">Paste the snippet that failed</span>
+              {/* Editor Workspace Card */}
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 sm:p-6 space-y-4">
+                {/* Language & Actions Toolbar */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-semibold text-slate-400">Language:</label>
+                    <div className="relative">
+                      <select
+                        value={language}
+                        onChange={(e) => setLanguage(e.target.value as SupportedLanguage)}
+                        className="bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white outline-none cursor-pointer pr-7 appearance-none"
+                      >
+                        {SUPPORTED_LANGUAGES.map((l) => (
+                          <option key={l.value} value={l.value}>{l.label}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2 top-2.5 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setCodeSnippet('');
+                      setErrorMessage('');
+                      setAnalysisResult(null);
+                    }}
+                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-white py-1 px-2 rounded-lg hover:bg-slate-800 transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Clear</span>
+                  </button>
                 </div>
-                <CodeEditor
-                  value={codeSnippet}
-                  onChange={setCodeSnippet}
-                  language={language}
-                  placeholder={`// Paste your broken ${language} code here...`}
-                  heightClass="min-h-[220px]"
-                />
+
+                {/* Code Snippet Input */}
+                <div className="space-y-1">
+                  <CodeEditor
+                    value={codeSnippet}
+                    onChange={setCodeSnippet}
+                    language={language}
+                    placeholder={`// Paste your broken ${language} code snippet here...`}
+                    heightClass="min-h-[180px]"
+                  />
+                </div>
+
+                {/* Optional Terminal Error Input */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Terminal className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Compiler / Terminal Error (Optional)</span>
+                    </span>
+                  </div>
+                  <textarea
+                    value={errorMessage}
+                    onChange={(e) => setErrorMessage(e.target.value)}
+                    placeholder="e.g. java.lang.NullPointerException: Cannot invoke method or IndexError: list index out of range..."
+                    rows={2}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl p-3 text-xs font-mono text-rose-300 placeholder-slate-600 outline-none leading-relaxed"
+                  />
+                </div>
+
+                {errorNotice && (
+                  <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-200 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>{errorNotice}</span>
+                  </div>
+                )}
+
+                {/* Submit Action Button */}
+                <div className="pt-2 flex justify-end">
+                  <button
+                    onClick={handleRunAnalysis}
+                    disabled={isAnalyzing}
+                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider text-white transition-all shadow-lg ${
+                      isAnalyzing
+                        ? 'bg-indigo-700 opacity-80 cursor-wait'
+                        : 'bg-indigo-600 hover:bg-indigo-500 active:scale-95 shadow-indigo-600/25'
+                    }`}
+                  >
+                    {isAnalyzing ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Diagnosing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
+                        <span>Diagnose & Explain</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
-              {/* Optional Error Message or Terminal Stack Trace */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                    <Terminal className="w-3.5 h-3.5 text-rose-400" />
-                    <span>Error Message / Stack Trace (Optional but recommended)</span>
-                  </label>
-                  <span className="text-xs text-slate-500">Compiler or terminal log</span>
-                </div>
-                <textarea
-                  value={errorMessage}
-                  onChange={(e) => setErrorMessage(e.target.value)}
-                  placeholder="Paste error output, e.g. java.lang.NullPointerException or IndexError: list index out of range..."
-                  rows={3}
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl p-3 text-xs sm:text-sm font-mono text-rose-300 placeholder-slate-600 outline-none transition-all leading-relaxed"
-                />
-              </div>
-
-              {errorNotice && (
-                <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-200 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                  <span>{errorNotice}</span>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
-                <button
-                  onClick={() => {
-                    setCodeSnippet('');
-                    setErrorMessage('');
-                    setAnalysisResult(null);
-                  }}
-                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white px-3 py-2 rounded-xl hover:bg-slate-800 transition-colors"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Clear All</span>
-                </button>
-
-                <button
-                  onClick={handleRunAnalysis}
-                  disabled={isAnalyzing}
-                  className={`flex items-center gap-2.5 px-8 py-3.5 rounded-xl text-sm font-bold text-white uppercase tracking-wider shadow-xl transition-all duration-200 ${
-                    isAnalyzing
-                      ? 'bg-indigo-700 opacity-80 cursor-wait'
-                      : 'bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:opacity-95 active:scale-95 shadow-indigo-600/30'
-                  }`}
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Diagnosing Error...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 text-amber-300" />
-                      <span>Explain Error & Teach Me</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Analysis Results Display */}
-            <div id="analysis-results-section" className="pt-4">
+              {/* Modular Results View */}
               {analysisResult && (
-                <ErrorAnalyzer
-                  result={analysisResult}
-                  isLiveAI={isLiveAI}
-                  onChallengeCompleted={() => {
-                    handleToggleMastered(analysisResult.id);
-                  }}
-                />
+                <div className="pt-2">
+                  <ErrorAnalyzer
+                    result={analysisResult}
+                    isLiveAI={isLiveAI}
+                    onChallengeCompleted={() => {
+                      handleToggleMastered(analysisResult.id);
+                    }}
+                  />
+                </div>
               )}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Mistake DNA & Analytics Tab */}
-        {activeTab === 'analytics' && (
-          <MistakeAnalytics
-            history={history}
-            patterns={patterns}
-            onToggleMastered={handleToggleMastered}
-            onClearHistory={handleClearHistory}
-            onSelectMistake={handleSelectMistakeFromHistory}
-            onGoToDrills={() => setActiveTab('drills')}
-          />
-        )}
+          {/* ===================== TAB 2: ERROR LIBRARY ===================== */}
+          {activeTab === 'library' && (
+            <div className="space-y-6">
+              <div className="border-b border-slate-800 pb-5">
+                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                  Error Library
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+                  Browse and dissect classic beginner pitfalls across major programming languages.
+                </p>
+              </div>
 
-        {/* Personalized Practice Drills Tab */}
-        {activeTab === 'drills' && (
-          <PracticeDrills patterns={patterns} />
-        )}
+              <ErrorLibrary onSelectPreset={handleSelectPreset} />
+            </div>
+          )}
 
-        {/* Error Library Tab */}
-        {activeTab === 'library' && (
-          <ErrorLibrary onSelectPreset={handleSelectPreset} />
-        )}
-      </main>
+          {/* ===================== TAB 3: PRACTICE DRILLS ===================== */}
+          {activeTab === 'drills' && (
+            <div className="space-y-6">
+              <div className="border-b border-slate-800 pb-5">
+                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                  Practice Drills
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+                  Solve coding mini-challenges to rewire recurring bug habits.
+                </p>
+              </div>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-8 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2 font-bold text-slate-400">
-            <span>Bug2Brain</span>
-            <span>•</span>
-            <span className="font-normal text-slate-500">Learn Programming Through Your Own Errors</span>
-          </div>
-          <div className="flex items-center gap-4 text-slate-500">
-            <button 
-              onClick={() => setIsExportModalOpen(true)}
-              className="hover:text-indigo-400 transition-colors"
-            >
-              Export Revision Sheet
-            </button>
-            <span>•</span>
-            <button 
-              onClick={() => setIsThemeModalOpen(true)}
-              className="hover:text-indigo-400 transition-colors"
-            >
-              Theme Settings
-            </button>
-            <span>•</span>
-            <button 
-              onClick={() => setIsApiKeyModalOpen(true)}
-              className="hover:text-indigo-400 transition-colors"
-            >
-              Gemini AI Settings
-            </button>
-          </div>
-        </div>
-      </footer>
+              <PracticeDrills patterns={patterns} />
+            </div>
+          )}
 
-      {/* Modals */}
-      <ApiKeyModal
-        isOpen={isApiKeyModalOpen}
-        onClose={() => setIsApiKeyModalOpen(false)}
+          {/* ===================== TAB 4: MISTAKE DNA ===================== */}
+          {activeTab === 'analytics' && (
+            <div className="space-y-6">
+              <div className="border-b border-slate-800 pb-5">
+                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                  Mistake DNA & History
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+                  Understand your recurring coding habits and review past error journal entries.
+                </p>
+              </div>
+
+              <MistakeAnalytics
+                history={history}
+                patterns={patterns}
+                onToggleMastered={handleToggleMastered}
+                onClearHistory={handleClearHistory}
+                onSelectMistake={handleSelectMistakeFromHistory}
+                onGoToDrills={() => setActiveTab('drills')}
+              />
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* Unified Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        hasApiKey={hasApiKey}
         onKeySaved={handleKeySaved}
-      />
-
-      <ExportModal
-        isOpen={isExportModalOpen}
-        onClose={() => setIsExportModalOpen(false)}
+        isSpeechActive={isSpeechActive}
+        onToggleSpeech={() => setIsSpeechActive(!isSpeechActive)}
         history={history}
         onImportHistory={handleImportHistory}
-      />
-
-      <ThemeCustomizer
-        isOpen={isThemeModalOpen}
-        onClose={() => setIsThemeModalOpen(false)}
         onThemeChanged={(theme) => {
           applyThemeClass(theme);
         }}
